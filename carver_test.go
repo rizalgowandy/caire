@@ -8,15 +8,22 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/esimov/caire/utils"
 	pigo "github.com/esimov/pigo/core"
+	"github.com/stretchr/testify/assert"
+)
+
+const (
+	imgWidth  = 10
+	imgHeight = 10
 )
 
 var p *Processor
 
 func init() {
 	p = &Processor{
-		NewWidth:       ImgWidth,
-		NewHeight:      ImgHeight,
+		NewWidth:       imgWidth,
+		NewHeight:      imgHeight,
 		BlurRadius:     1,
 		SobelThreshold: 4,
 		Percentage:     false,
@@ -26,18 +33,20 @@ func init() {
 }
 
 func TestCarver_EnergySeamShouldNotBeDetected(t *testing.T) {
+	assert := assert.New(t)
+
 	var seams [][]Seam
 	var totalEnergySeams int
 
-	img := image.NewNRGBA(image.Rect(0, 0, ImgWidth, ImgHeight))
+	img := image.NewNRGBA(image.Rect(0, 0, imgWidth, imgHeight))
 	dx, dy := img.Bounds().Dx(), img.Bounds().Dy()
 
 	var c = NewCarver(dx, dy)
-	for x := 0; x < ImgWidth; x++ {
+	for x := 0; x < imgWidth; x++ {
 		width, height := img.Bounds().Max.X, img.Bounds().Max.Y
 		c = NewCarver(width, height)
-		c.ComputeSeams(img, p)
-		les := c.FindLowestEnergySeams()
+		c.ComputeSeams(p, img)
+		les := c.FindLowestEnergySeams(p)
 		seams = append(seams, les)
 	}
 
@@ -46,17 +55,17 @@ func TestCarver_EnergySeamShouldNotBeDetected(t *testing.T) {
 			totalEnergySeams += seams[i][s].X
 		}
 	}
-	if totalEnergySeams != 0 {
-		t.Errorf("Energy seam shouldn't been detected")
-	}
+	assert.Equal(0, totalEnergySeams)
 }
 
 func TestCarver_DetectHorizontalEnergySeam(t *testing.T) {
+	assert := assert.New(t)
+
 	var seams [][]Seam
 	var totalEnergySeams int
 
-	img := image.NewNRGBA(image.Rect(0, 0, ImgWidth, ImgHeight))
-	draw.Draw(img, img.Bounds(), &image.Uniform{image.White}, image.ZP, draw.Src)
+	img := image.NewNRGBA(image.Rect(0, 0, imgWidth, imgHeight))
+	draw.Draw(img, img.Bounds(), &image.Uniform{image.White}, image.Point{}, draw.Src)
 
 	// Replace the pixel colors in a single row from 0xff to 0xdd. 5 is an arbitrary value.
 	// The seam detector should recognize that line as being of low energy density
@@ -71,11 +80,11 @@ func TestCarver_DetectHorizontalEnergySeam(t *testing.T) {
 	}
 
 	var c = NewCarver(dx, dy)
-	for x := 0; x < ImgWidth; x++ {
+	for x := 0; x < imgWidth; x++ {
 		width, height := img.Bounds().Max.X, img.Bounds().Max.Y
 		c = NewCarver(width, height)
-		c.ComputeSeams(img, p)
-		les := c.FindLowestEnergySeams()
+		c.ComputeSeams(p, img)
+		les := c.FindLowestEnergySeams(p)
 		seams = append(seams, les)
 	}
 
@@ -84,17 +93,18 @@ func TestCarver_DetectHorizontalEnergySeam(t *testing.T) {
 			totalEnergySeams += seams[i][s].X
 		}
 	}
-	if totalEnergySeams == 0 {
-		t.Errorf("The seam detector should have detected a horizontal energy seam")
-	}
+
+	assert.Greater(totalEnergySeams, 0)
 }
 
 func TestCarver_DetectVerticalEnergySeam(t *testing.T) {
+	assert := assert.New(t)
+
 	var seams [][]Seam
 	var totalEnergySeams int
 
-	img := image.NewNRGBA(image.Rect(0, 0, ImgWidth, ImgHeight))
-	draw.Draw(img, img.Bounds(), &image.Uniform{image.White}, image.ZP, draw.Src)
+	img := image.NewNRGBA(image.Rect(0, 0, imgWidth, imgHeight))
+	draw.Draw(img, img.Bounds(), &image.Uniform{image.White}, image.Point{}, draw.Src)
 
 	// Replace the pixel colors in a single column from 0xff to 0xdd. 5 is an arbitrary value.
 	// The seam detector should recognize that line as being of low energy density
@@ -110,32 +120,31 @@ func TestCarver_DetectVerticalEnergySeam(t *testing.T) {
 
 	var c = NewCarver(dx, dy)
 	img = c.RotateImage90(img)
-	for x := 0; x < ImgHeight; x++ {
+	for x := 0; x < imgHeight; x++ {
 		width, height := img.Bounds().Max.X, img.Bounds().Max.Y
 		c = NewCarver(width, height)
-		c.ComputeSeams(img, p)
-		les := c.FindLowestEnergySeams()
+		c.ComputeSeams(p, img)
+		les := c.FindLowestEnergySeams(p)
 		seams = append(seams, les)
 	}
-	img = c.RotateImage270(img)
 
 	for i := 0; i < len(seams); i++ {
 		for s := 0; s < len(seams[i]); s++ {
 			totalEnergySeams += seams[i][s].X
 		}
 	}
-	if totalEnergySeams == 0 {
-		t.Errorf("The seam detector should have detected a vertical energy seam")
-	}
+	assert.Greater(totalEnergySeams, 0)
 }
 
 func TestCarver_RemoveSeam(t *testing.T) {
-	img := image.NewNRGBA(image.Rect(0, 0, ImgWidth, ImgHeight))
+	assert := assert.New(t)
+
+	img := image.NewNRGBA(image.Rect(0, 0, imgWidth, imgHeight))
 	bounds := img.Bounds()
 
 	// We choose to fill up the background with an uniform white color
 	// and afterwards we replace the colors in a single row with lower intensity ones.
-	draw.Draw(img, bounds, &image.Uniform{image.White}, image.ZP, draw.Src)
+	draw.Draw(img, bounds, &image.Uniform{image.White}, image.Point{}, draw.Src)
 	origImg := img
 
 	dx, dy := img.Bounds().Dx(), img.Bounds().Dy()
@@ -145,12 +154,12 @@ func TestCarver_RemoveSeam(t *testing.T) {
 	}
 
 	c := NewCarver(dx, dy)
-	c.ComputeSeams(img, p)
-	seams := c.FindLowestEnergySeams()
+	c.ComputeSeams(p, img)
+	seams := c.FindLowestEnergySeams(p)
 	img = c.RemoveSeam(img, seams, false)
 
 	isEq := true
-	// The test should pass if the detector correctly finds the row wich pixel values are of lower intensity.
+	// The test should pass if the detector correctly finds the row which pixel values are of lower intensity.
 	for x := 0; x < dx; x++ {
 		for y := 0; y < dy; y++ {
 			// In case the seam detector correctly recognize the modified line as of low importance
@@ -163,18 +172,18 @@ func TestCarver_RemoveSeam(t *testing.T) {
 			}
 		}
 	}
-	if isEq {
-		t.Errorf("Seam should have been removed")
-	}
+	assert.False(isEq)
 }
 
 func TestCarver_AddSeam(t *testing.T) {
-	img := image.NewNRGBA(image.Rect(0, 0, ImgWidth, ImgHeight))
+	assert := assert.New(t)
+
+	img := image.NewNRGBA(image.Rect(0, 0, imgWidth, imgHeight))
 	bounds := img.Bounds()
 
 	// We choose to fill up the background with an uniform white color
 	// Afterwards we'll replace the colors in a single row with lower intensity ones.
-	draw.Draw(img, bounds, &image.Uniform{image.White}, image.ZP, draw.Src)
+	draw.Draw(img, bounds, &image.Uniform{image.White}, image.Point{}, draw.Src)
 	origImg := img
 
 	dx, dy := img.Bounds().Dx(), img.Bounds().Dy()
@@ -184,14 +193,14 @@ func TestCarver_AddSeam(t *testing.T) {
 	}
 
 	c := NewCarver(dx, dy)
-	c.ComputeSeams(img, p)
-	seams := c.FindLowestEnergySeams()
+	c.ComputeSeams(p, img)
+	seams := c.FindLowestEnergySeams(p)
 	img = c.AddSeam(img, seams, false)
 
 	dx, dy = img.Bounds().Dx(), img.Bounds().Dy()
 
 	isEq := true
-	// The test should pass if the detector correctly finds the row wich has lower intensity colors.
+	// The test should pass if the detector correctly finds the row which has lower intensity colors.
 	for x := 0; x < dx; x++ {
 		for y := 0; y < dy; y++ {
 			r0, g0, b0, _ := origImg.At(x, y).RGBA()
@@ -202,18 +211,16 @@ func TestCarver_AddSeam(t *testing.T) {
 			}
 		}
 	}
-	if isEq {
-		t.Errorf("Seam should have been added")
-	}
+	assert.False(isEq)
 }
 
 func TestCarver_ComputeSeams(t *testing.T) {
-	img := image.NewNRGBA(image.Rect(0, 0, ImgWidth, ImgHeight))
+	assert := assert.New(t)
+
+	img := image.NewNRGBA(image.Rect(0, 0, imgWidth, imgHeight))
 
 	// We choose to fill up the background with an uniform white color
 	// Afterwards we'll replace the colors in a single row with lower intensity ones.
-	//draw.Draw(img, img.Bounds(), &image.Uniform{image.White}, image.ZP, draw.Src)
-
 	dx, dy := img.Bounds().Dx(), img.Bounds().Dy()
 	// Replace the pixels in row 5 with lower intensity colors.
 	for x := 0; x < dx; x++ {
@@ -224,15 +231,16 @@ func TestCarver_ComputeSeams(t *testing.T) {
 	}
 
 	c := NewCarver(dx, dy)
-	c.ComputeSeams(img, p)
+	c.ComputeSeams(p, img)
 
 	otherThenZero := findNonZeroValue(c.Points)
-	if !otherThenZero {
-		t.Errorf("The seams computation should have been returned a slice of points with values other then zeros")
-	}
+
+	assert.True(otherThenZero)
 }
 
 func TestCarver_ShouldDetectFace(t *testing.T) {
+	assert := assert.New(t)
+
 	p.FaceDetect = true
 
 	sampleImg := filepath.Join("./testdata", "sample.jpg")
@@ -242,69 +250,7 @@ func TestCarver_ShouldDetectFace(t *testing.T) {
 	}
 	defer f.Close()
 
-	cf, err := classifier.ReadFile("data/facefinder")
-	if err != nil {
-		t.Fatalf("error reading the cascade file: %v", err)
-	}
-	p.PigoFaceDetector, err = p.PigoFaceDetector.Unpack(cf)
-	if err != nil {
-		t.Fatalf("error unpacking the cascade file: %v", err)
-	}
-
-	src, _, err := image.Decode(f)
-	if err != nil {
-		t.Fatalf("error decoding image: %v", err)
-	}
-	img := p.imgToNRGBA(src)
-	dx, dy := img.Bounds().Max.X, img.Bounds().Max.Y
-
-	c := NewCarver(dx, dy)
-	gray := p.Grayscale(img)
-	// Transform the image to a pixel array.
-	pixels := c.rgbToGrayscale(gray)
-
-	cParams := pigo.CascadeParams{
-		MinSize:     100,
-		MaxSize:     max(dx, dy),
-		ShiftFactor: 0.1,
-		ScaleFactor: 1.1,
-
-		ImageParams: pigo.ImageParams{
-			Pixels: pixels,
-			Rows:   dy,
-			Cols:   dx,
-			Dim:    dx,
-		},
-	}
-
-	// Run the classifier over the obtained leaf nodes and return the detection results.
-	// The result contains quadruplets representing the row, column, scale and detection score.
-	faces := p.PigoFaceDetector.RunCascade(cParams, p.FaceAngle)
-
-	// Calculate the intersection over union (IoU) of two clusters.
-	faces = p.PigoFaceDetector.ClusterDetections(faces, 0.2)
-
-	if len(faces) == 0 {
-		t.Errorf("Expected 1 face to be detected, got %d.", len(faces))
-	}
-}
-
-func TestCarver_ShouldNotRemoveFaceZone(t *testing.T) {
-	p.FaceDetect = true
-	p.BlurRadius = 2
-
-	sampleImg := filepath.Join("./testdata", "sample.jpg")
-	f, err := os.Open(sampleImg)
-	if err != nil {
-		t.Fatalf("could not load sample image: %v", err)
-	}
-	defer f.Close()
-
-	cf, err := classifier.ReadFile("data/facefinder")
-	if err != nil {
-		t.Fatalf("error reading the cascade file: %v", err)
-	}
-	p.PigoFaceDetector, err = p.PigoFaceDetector.Unpack(cf)
+	p.FaceDetector, err = p.FaceDetector.Unpack(cascadeFile)
 	if err != nil {
 		t.Fatalf("error unpacking the cascade file: %v", err)
 	}
@@ -320,13 +266,9 @@ func TestCarver_ShouldNotRemoveFaceZone(t *testing.T) {
 	// Transform the image to a pixel array.
 	pixels := c.rgbToGrayscale(img)
 
-	img = p.Grayscale(img)
-	sobel := c.SobelDetector(img, float64(p.SobelThreshold))
-	img = c.StackBlur(sobel, uint32(p.BlurRadius))
-
 	cParams := pigo.CascadeParams{
 		MinSize:     100,
-		MaxSize:     max(dx, dy),
+		MaxSize:     utils.Max(dx, dy),
 		ShiftFactor: 0.1,
 		ScaleFactor: 1.1,
 
@@ -340,10 +282,64 @@ func TestCarver_ShouldNotRemoveFaceZone(t *testing.T) {
 
 	// Run the classifier over the obtained leaf nodes and return the detection results.
 	// The result contains quadruplets representing the row, column, scale and detection score.
-	faces := p.PigoFaceDetector.RunCascade(cParams, p.FaceAngle)
+	faces := p.FaceDetector.RunCascade(cParams, p.FaceAngle)
 
 	// Calculate the intersection over union (IoU) of two clusters.
-	faces = p.PigoFaceDetector.ClusterDetections(faces, 0.2)
+	faces = p.FaceDetector.ClusterDetections(faces, 0.2)
+
+	assert.Equal(1, len(faces))
+}
+
+func TestCarver_ShouldNotRemoveFaceZone(t *testing.T) {
+	p.FaceDetect = true
+	p.BlurRadius = 10
+
+	sampleImg := filepath.Join("./testdata", "sample.jpg")
+	f, err := os.Open(sampleImg)
+	if err != nil {
+		t.Fatalf("could not load sample image: %v", err)
+	}
+	defer f.Close()
+
+	p.FaceDetector, err = p.FaceDetector.Unpack(cascadeFile)
+	if err != nil {
+		t.Fatalf("error unpacking the cascade file: %v", err)
+	}
+
+	src, _, err := image.Decode(f)
+	if err != nil {
+		t.Fatalf("error decoding image: %v", err)
+	}
+	img := p.imgToNRGBA(src)
+	dx, dy := img.Bounds().Max.X, img.Bounds().Max.Y
+
+	c := NewCarver(dx, dy)
+	// Transform the image to a pixel array.
+	pixels := c.rgbToGrayscale(img)
+
+	sobel := c.SobelDetector(img, float64(p.SobelThreshold))
+	img = c.StackBlur(sobel, uint32(p.BlurRadius))
+
+	cParams := pigo.CascadeParams{
+		MinSize:     100,
+		MaxSize:     utils.Max(dx, dy),
+		ShiftFactor: 0.1,
+		ScaleFactor: 1.1,
+
+		ImageParams: pigo.ImageParams{
+			Pixels: pixels,
+			Rows:   dy,
+			Cols:   dx,
+			Dim:    dx,
+		},
+	}
+
+	// Run the classifier over the obtained leaf nodes and return the detection results.
+	// The result contains quadruplets representing the row, column, scale and detection score.
+	faces := p.FaceDetector.RunCascade(cParams, p.FaceAngle)
+
+	// Calculate the intersection over union (IoU) of two clusters.
+	faces = p.FaceDetector.ClusterDetections(faces, 0.2)
 
 	// Range over all the detected faces and draw a white rectangle mask over each of them.
 	// We need to trick the sobel detector to consider them as important image parts.
@@ -356,16 +352,71 @@ func TestCarver_ShouldNotRemoveFaceZone(t *testing.T) {
 				face.Col+face.Scale/2,
 				face.Row+face.Scale/2,
 			)
-			draw.Draw(sobel, rect, &image.Uniform{image.White}, image.ZP, draw.Src)
+			draw.Draw(sobel, rect, &image.Uniform{image.White}, image.Point{}, draw.Src)
 		}
 	}
-	c.ComputeSeams(img, p)
-	seams := c.FindLowestEnergySeams()
+	c.ComputeSeams(p, img)
+	seams := c.FindLowestEnergySeams(p)
 
 	for _, seam := range seams {
 		if seam.X >= rect.Min.X && seam.X <= rect.Max.X {
 			t.Errorf("Carver shouldn't remove seams from face zone")
 			break
+		}
+	}
+}
+
+func TestCarver_ShouldNotResizeWithFaceDistorsion(t *testing.T) {
+	p.FaceDetect = true
+	p.BlurRadius = 10
+	p.NewHeight = 200
+
+	sampleImg := filepath.Join("./testdata", "sample.jpg")
+	f, err := os.Open(sampleImg)
+	if err != nil {
+		t.Fatalf("could not load sample image: %v", err)
+	}
+	defer f.Close()
+
+	p.FaceDetector, err = p.FaceDetector.Unpack(cascadeFile)
+	if err != nil {
+		t.Fatalf("error unpacking the cascade file: %v", err)
+	}
+
+	src, _, err := image.Decode(f)
+	if err != nil {
+		t.Fatalf("error decoding image: %v", err)
+	}
+	img := p.imgToNRGBA(src)
+	dx, dy := img.Bounds().Max.X, img.Bounds().Max.Y
+
+	c := NewCarver(dx, dy)
+	// Transform the image to a pixel array.
+	pixels := c.rgbToGrayscale(img)
+	cParams := pigo.CascadeParams{
+		MinSize:     100,
+		MaxSize:     utils.Max(dx, dy),
+		ShiftFactor: 0.1,
+		ScaleFactor: 1.1,
+
+		ImageParams: pigo.ImageParams{
+			Pixels: pixels,
+			Rows:   dy,
+			Cols:   dx,
+			Dim:    dx,
+		},
+	}
+
+	// Run the classifier over the obtained leaf nodes and return the detection results.
+	// The result contains quadruplets representing the row, column, scale and detection score.
+	faces := p.FaceDetector.RunCascade(cParams, p.FaceAngle)
+
+	// Calculate the intersection over union (IoU) of two clusters.
+	faces = p.FaceDetector.ClusterDetections(faces, 0.2)
+
+	for _, face := range faces {
+		if p.NewHeight < face.Scale {
+			t.Errorf("Should not resize image without face deformation.")
 		}
 	}
 }
